@@ -414,7 +414,7 @@
         if (fetchInProgress) return;
         fetchInProgress = true;
         if (showSpinner) setRefreshing(true, 'Refreshing...');
-        fetch(ASSETS_URL, { signal: AbortSignal.timeout(20000) })
+        fetch(ASSETS_URL, { headers: { 'ngrok-skip-browser-warning': 'true' }, signal: AbortSignal.timeout(20000) })
           .then(function(resp) {
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             return resp.json();
@@ -565,7 +565,7 @@
           '</div>';
         fetch(API_BASE + '/api/analyze-batch', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
           body: JSON.stringify({ pairs: [pair] }),
           signal: AbortSignal.timeout(60000)
         })
