@@ -221,13 +221,7 @@
   }
   .loading-container p { margin-top: 14px; color: var(--text-mute); font-size: 14px; }
 
-  .ws-badge {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 10px; padding: 2px 6px; border-radius: 4px;
-    background: rgba(0, 201, 167, 0.1); color: var(--up);
-    border: 1px solid rgba(0, 201, 167, 0.3);
-  }
-  .ws-badge.offline { background: rgba(240, 71, 71, 0.1); color: var(--down); border-color: rgba(240, 71, 71, 0.3); }
+  .ws-badge { display: none; }
 
   @media (max-width: 600px) {
     .container { padding: 12px; }
@@ -295,8 +289,6 @@
 </div>
 
 <script>
-
-
   // ------------------------------------------------------------------
   // State
   // ------------------------------------------------------------------
@@ -304,15 +296,12 @@
   let activeCategory = 'Currencies';
   let categories = { Currencies: [], Crypto: [], Commodities: [], Stocks: [] };
   let lastUpdatedAt = null;
-  let refreshTimer = null;
   let searchQuery = '';
-  let ws = null;
-  let wsReconnectTimer = null;
-  let wsConnected = false;
-  let useWebSocket = true; // Try WebSocket first, fallback to HTTP
+  let pollTimer = null;
+  let activeCountdownTimers = [];
 
   // ------------------------------------------------------------------
-  // DOM
+  // DOM (always available, outside .then)
   // ------------------------------------------------------------------
   const $pairsGrid = document.getElementById('pairsGrid');
   const $search = document.getElementById('searchInput');
@@ -323,10 +312,9 @@
   const $refreshText = document.getElementById('refreshText');
   const $errorBanner = document.getElementById('errorBanner');
   const $tabs = document.getElementById('categoryTabs');
-  const $wsBadge = document.getElementById('wsBadge');
 
   // ------------------------------------------------------------------
-  // Helpers
+  // Helpers (no API dependency)
   // ------------------------------------------------------------------
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({
@@ -340,11 +328,11 @@
     if (isNaN(d.getTime())) return 'never';
     const secs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
     if (secs < 5) return 'just now';
-    if (secs < 60) return `${secs}s ago`;
+    if (secs < 60) return secs + 's ago';
     const mins = Math.floor(secs / 60);
-    if (mins < 60) return `${mins}m ago`;
+    if (mins < 60) return mins + 'm ago';
     const hrs = Math.floor(mins / 60);
-    return `${hrs}h ago`;
+    return hrs + 'h ago';
   }
 
   function setConn(state) {
@@ -360,17 +348,6 @@
     }
   }
 
-  function setWsBadge(connected) {
-    $wsBadge.style.display = 'inline-flex';
-    if (connected) {
-      $wsBadge.className = 'ws-badge';
-      $wsText.textContent = 'LIVE';
-    } else {
-      $wsBadge.className = 'ws-badge offline';
-      $wsText.textContent = 'HTTP';
-    }
-  }
-
   function setRefreshing(isRefreshing, label) {
     $refreshPill.style.display = 'inline-flex';
     $refreshPill.classList.toggle('active', !!isRefreshing);
@@ -378,451 +355,367 @@
     if (label) $refreshText.textContent = label;
   }
 
-  // ------------------------------------------------------------------
-  // Config — fetch API base URL from config.json, then start app
-  // ------------------------------------------------------------------
-  fetch('./config.json')
-    .then(r => r.json())
-    .then(cfg => {
-      const API_BASE = cfg.API_BASE;
-      const WS_URL = API_BASE.replace(/^http/, 'ws') + '/ws';
-      const ASSETS_URL = `${API_BASE}/api/assets-live`;
-      const ANALYZE_URL = `${API_BASE}/api/analyze`;
-      const REFRESH_MS = 10000;
-      const RETRY_MS = 5000;
-
-  // ------------------------------------------------------------------
-  // WebSocket Manager
-  // ------------------------------------------------------------------
-  function connectWebSocket() {
-    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-      return;
-    }
-
-    try {
-      ws = new WebSocket(WS_URL);
-    } catch (e) {
-      console.warn('WebSocket creation failed:', e);
-      useWebSocket = false;
-      setWsBadge(false);
-      return;
-    }
-
-    ws.onopen = () => {
-      wsConnected = true;
-      useWebSocket = true;
-      setWsBadge(true);
-      console.log('[WS] Connected');
-
-      // Start ping keepalive
-      startWsPing();
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        handleWsMessage(msg);
-      } catch (e) {
-        console.warn('[WS] Parse error:', e);
-      }
-    };
-
-    ws.onclose = () => {
-      wsConnected = false;
-      setWsBadge(false);
-      console.log('[WS] Disconnected, reconnecting in 3s...');
-      if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
-      wsReconnectTimer = setTimeout(connectWebSocket, 3000);
-    };
-
-    ws.onerror = (err) => {
-      console.warn('[WS] Error:', err);
-      useWebSocket = false;
-      setWsBadge(false);
-    };
+  function clearCountdownTimers() {
+    activeCountdownTimers.forEach(function(id) { clearInterval(id); });
+    activeCountdownTimers = [];
   }
 
-  function startWsPing() {
-    const pingInterval = setInterval(() => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'ping' }));
-      } else {
-        clearInterval(pingInterval);
-      }
-    }, 30000);
-  }
-
-  function handleWsMessage(msg) {
-    const { event, data } = msg;
-
-    switch (event) {
-      case 'connected':
-        console.log('[WS] Server:', data.message);
-        break;
-
-      case 'assets':
-        if (data.categories) {
-          categories = data.categories;
-          lastUpdatedAt = data.updated_at;
-          setConn('live');
-          $errorBanner.style.display = 'none';
-          render();
-        }
-        break;
-
-      case 'price':
-        // Real-time price update (optional: update UI)
-        break;
-
-      case 'analysis':
-        if (currentPair) {
-          renderResult(data);
-        }
-        break;
-
-      case 'pong':
-        break;
-    }
-  }
-
-  function wsSend(data) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(data));
-      return true;
-    }
-    return false;
-  }
-
-  // ------------------------------------------------------------------
-  // Tabs
-  // ------------------------------------------------------------------
-  $tabs.addEventListener('click', e => {
-    const btn = e.target.closest('.tab');
-    if (!btn) return;
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    btn.classList.add('active');
-    activeCategory = btn.dataset.cat;
-    render();
-  });
-
-  function handleSearch() {
-    searchQuery = $search.value.trim().toLowerCase();
-    render();
-  }
-
-  // ------------------------------------------------------------------
-  // Render
-  // ------------------------------------------------------------------
-  function updateCounts() {
-    for (const cat of Object.keys(categories)) {
-      const el = document.getElementById(`count-${cat}`);
-      if (el) el.textContent = categories[cat].length;
-    }
-  }
-
-  function buildPairCard(p) {
-    const card = document.createElement('div');
-    card.className = 'pair-card';
-    card.dataset.assetId = p.asset_id;
-    card.dataset.cat = _categoryOfAssetId(p.asset_id);
-    card.innerHTML = `
-      <div class="payout-badge" data-payout>${p.payout}%</div>
-      <div class="pair-name">${escapeHtml(p.name)}</div>
-      <div class="pair-desc">${escapeHtml(_categoryOfAssetId(p.asset_id))}${p.profit_1m ? ` \u00b7 1M ${p.profit_1m}%` : ''}</div>
-      ${p.is_otc ? '<div class="otc-badge">OTC</div>' : ''}
-    `;
-    card.addEventListener('click', () => openAnalysis(p.asset_id));
-    return card;
-  }
-
-  function _categoryOfAssetId(assetId) {
-    for (const cat of Object.keys(categories)) {
-      if (categories[cat].some(p => p.asset_id === assetId)) return cat;
-    }
-    return activeCategory;
-  }
-
-  function renderSkeleton(count = 12) {
+  function renderSkeleton(count) {
+    count = count || 12;
     $pairsGrid.innerHTML = '';
-    for (let i = 0; i < count; i++) {
-      const s = document.createElement('div');
+    for (var i = 0; i < count; i++) {
+      var s = document.createElement('div');
       s.className = 'skeleton-card';
       $pairsGrid.appendChild(s);
     }
   }
 
-  function render() {
-    updateCounts();
-    const query = searchQuery;
-    const useSearch = query.length > 0;
-
-    if (!useSearch) {
-      const list = categories[activeCategory] || [];
-      if (!list.length) {
-        $pairsGrid.innerHTML = `
-          <div class="empty-state" style="grid-column: 1 / -1;">
-            No pairs available in this category right now.<br>
-            <span style="color:var(--text-mute);font-size:12px;">Weekend/Holiday \u2014 OTC pairs only</span>
-          </div>`;
-        return;
-      }
-      $pairsGrid.innerHTML = '';
-      list.forEach(p => $pairsGrid.appendChild(buildPairCard(p)));
-    } else {
-      const matches = [];
-      for (const cat of Object.keys(categories)) {
-        for (const p of categories[cat]) {
-          if (p.name.toLowerCase().includes(query) || p.asset_id.toLowerCase().includes(query)) {
-            matches.push(p);
-          }
-        }
-      }
-      matches.sort((a, b) => b.payout - a.payout);
-      if (!matches.length) {
-        $pairsGrid.innerHTML = `
-          <div class="empty-state" style="grid-column: 1 / -1;">
-            No matches for "<strong>${escapeHtml(query)}</strong>"
-          </div>`;
-        return;
-      }
-      $pairsGrid.innerHTML = '';
-      matches.forEach(p => $pairsGrid.appendChild(buildPairCard(p)));
-    }
-  }
-
   // ------------------------------------------------------------------
-  // Fetch loop (HTTP fallback)
+  // Inline handler stubs — safe to call before config loads (no-op)
+  // Real implementations set inside .then()
   // ------------------------------------------------------------------
-  async function fetchAssets(showSpinner = true) {
-    if (showSpinner) setRefreshing(true, 'Refreshing...');
-    try {
-      const resp = await fetch(ASSETS_URL, { signal: AbortSignal.timeout(20000) });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      if (data.status === 'ok' && data.categories) {
-        categories = data.categories;
-        lastUpdatedAt = data.updated_at;
-        setConn('live');
-        $errorBanner.style.display = 'none';
-        render();
-      } else {
-        setConn('live');
-        $errorBanner.style.display = 'none';
-        render();
-      }
-      setRefreshing(false, `Updated ${timeAgo(lastUpdatedAt)}`);
-    } catch (err) {
-      setConn('dead');
-      $errorBanner.style.display = 'block';
-      setRefreshing(false, 'Offline');
-      if (!lastUpdatedAt) renderSkeleton();
-    }
-  }
+  window.handleSearch = function() {};
+  window.reanalyze = function() {};
+  window.backToDashboard = function() {};
 
-  function startAutoRefresh() {
-    if (refreshTimer) clearInterval(refreshTimer);
-    // If WebSocket is connected, don't poll — we get updates via WS
-    if (wsConnected) return;
-    refreshTimer = setInterval(() => fetchAssets(true), REFRESH_MS);
-  }
-
-  setInterval(() => {
-    if (lastUpdatedAt && $connDot.classList.contains('live')) {
-      setRefreshing(false, `Updated ${timeAgo(lastUpdatedAt)}`);
-    }
-  }, 1000);
-
-  // ------------------------------------------------------------------
-  // Analysis view
-  // ------------------------------------------------------------------
-  function openAnalysis(pair) {
-    currentPair = pair;
-    document.getElementById('dashboardView').classList.add('hidden');
-    const view = document.getElementById('analysisView');
-    view.classList.add('active');
-    document.getElementById('assetLabel').textContent = pair;
-    setStatus('analyzing');
-    document.getElementById('analysisContent').innerHTML = `
-      <div class="loading-container">
-        <div class="spinner"></div>
-        <p>Fetching analysis for ${escapeHtml(pair)}...</p>
-      </div>`;
-
-    // Try WebSocket first, fallback to HTTP
-    if (!wsSend({ type: 'analyze', asset: pair })) {
-      fetchAnalysisHttp(pair);
-    }
-  }
-
-  function setStatus(state) {
-    const badge = document.getElementById('statusBadge');
-    if (state === 'analyzing') {
-      badge.className = 'status-badge status-analyzing';
-      badge.innerHTML = '<span class="status-dot-sb analyzing"></span> Analyzing...';
-    } else if (state === 'result') {
-      badge.className = 'status-badge status-result';
-      badge.innerHTML = '<span class="status-dot-sb result"></span> Result';
-    } else {
-      badge.className = 'status-badge status-error';
-      badge.innerHTML = '<span class="status-dot-sb error"></span> Error';
-    }
-  }
-
-  async function fetchAnalysisHttp(pair) {
-    setStatus('analyzing');
-    const content = document.getElementById('analysisContent');
-    content.innerHTML = `
-      <div class="loading-container">
-        <div class="spinner"></div>
-        <p>Fetching analysis for ${escapeHtml(pair)}...</p>
-      </div>`;
-    try {
-      const url = `${ANALYZE_URL}/${encodeURIComponent(pair)}`;
-      const resp = await fetch(url, { signal: AbortSignal.timeout(60000) });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-      const data = await resp.json();
-      renderResult(data);
-    } catch (err) {
-      setStatus('error');
-      content.innerHTML = `
-        <div class="error-card">
-          <p>${escapeHtml(err.message || 'Failed to fetch analysis')}</p>
-        </div>
-        <div class="btn-group">
-          <button class="btn btn-primary" onclick="reanalyze()">Retry</button>
-          <button class="btn btn-secondary" onclick="backToDashboard()">Dashboard</button>
-        </div>`;
-    }
-  }
-
-  function renderResult(data) {
-    const content = document.getElementById('analysisContent');
-    setStatus('result');
-    const isError = data.status === 'Error';
-    if (isError) {
-      setStatus('error');
-      content.innerHTML = `
-        <div class="error-card">
-          <p>${escapeHtml(data.message || 'No data available')}</p>
-          ${data.trend ? `<p style="margin-top:8px;color:var(--text-dim);font-size:13px;">Trend: ${escapeHtml(data.trend)}</p>` : ''}
-        </div>
-        <div class="btn-group">
-          <button class="btn btn-primary" onclick="reanalyze()">Reanalyze</button>
-          <button class="btn btn-secondary" onclick="backToDashboard()">Dashboard</button>
-        </div>`;
-      return;
-    }
-
-    const prediction = (data.next_candle_prediction || '').toLowerCase();
-    const trend = (data.trend || '').toLowerCase();
-    const probability = data.probability || 0;
-    const suggestion = data.suggestion || '';
-
-    let predClass = 'prediction-up', predIcon = '\uD83D\uDFE2';
-    if (prediction === 'down') { predClass = 'prediction-down'; predIcon = '\uD83D\uDD34'; }
-
-    let trendClass = 'trend-up';
-    if (trend.includes('down')) trendClass = 'trend-down';
-
-    let suggClass = 'suggestion-skip', suggIcon = '\u26A0\uFE0F';
-    if (suggestion.toLowerCase().startsWith('yes')) { suggClass = 'suggestion-yes'; suggIcon = '\u2705'; }
-    else if (suggestion.toLowerCase().startsWith('no')) { suggClass = 'suggestion-no'; suggIcon = '\u26D4'; }
-
-    content.innerHTML = `
-      <div class="result-card">
-        <div class="result-row">
-          <span class="label">Market Type</span>
-          <span class="value">${escapeHtml(data.market_type || 'N/A')}</span>
-        </div>
-        <div class="result-row">
-          <span class="label">Next Candle Prediction</span>
-          <span class="value ${predClass}">${predIcon} ${escapeHtml(data.next_candle_prediction || 'N/A')}</span>
-        </div>
-        <div class="result-row">
-          <span class="label">Trend</span>
-          <span class="value ${trendClass}">${escapeHtml(data.trend || 'N/A')}</span>
-        </div>
-        <div class="result-row">
-          <span class="label">Probability</span>
-          <div class="progress-wrapper">
-            <div class="progress-bar-bg">
-              <div class="progress-bar-fill" style="width:${probability}%"></div>
-            </div>
-            <div class="progress-text">${probability}%</div>
-          </div>
-        </div>
-        <div class="result-row">
-          <span class="label">Suggestion</span>
-          <span class="value ${suggClass}">${suggIcon} ${escapeHtml(suggestion || 'N/A')}</span>
-        </div>
-        ${data.candle_seconds_remaining !== undefined ? `
-        <div class="result-row">
-          <span class="label">Candle Closes In</span>
-          <span class="value" id="candleCountdown" style="font-weight:bold; color: ${data.entry_timing === 'GOOD' ? '#00c9a7' : '#f04747'};">
-            ${data.candle_seconds_remaining}s \u2014 ${data.entry_timing === 'GOOD' ? '\u2705 Enter Now' : '\u26D4 Wait Next Candle'}
-          </span>
-        </div>` : ''}
-      </div>
-      <div class="btn-group">
-        <button class="btn btn-primary" onclick="reanalyze()">Reanalyze</button>
-        <button class="btn btn-secondary" onclick="backToDashboard()">Dashboard</button>
-      </div>
-    `;
-    if (data.candle_seconds_remaining !== undefined) {
-      let secs = data.candle_seconds_remaining;
-      const countdownEl = document.getElementById('candleCountdown');
-      if (countdownEl) {
-        const timer = setInterval(() => {
-          secs--;
-          if (secs <= 0) {
-            clearInterval(timer);
-            if (countdownEl) countdownEl.textContent = '0s \u2014 \u26D4 Candle Closed';
-          } else {
-            const ok = secs >= 20;
-            if (countdownEl) {
-              countdownEl.style.color = ok ? '#00c9a7' : '#f04747';
-              countdownEl.textContent = secs + 's \u2014 ' + (ok ? '\u2705 Enter Now' : '\u26D4 Wait Next Candle');
-            }
-          }
-        }, 1000);
-      }
-    }
-  }
-
-  function reanalyze() { if (currentPair) openAnalysis(currentPair); }
-
-  function backToDashboard() {
-    currentPair = null;
-    document.getElementById('analysisView').classList.remove('active');
-    document.getElementById('dashboardView').classList.remove('hidden');
-    $search.value = '';
-    searchQuery = '';
-    render();
-  }
-
-  // ------------------------------------------------------------------
-  // Boot
-  // ------------------------------------------------------------------
+  // Show skeleton immediately
   renderSkeleton();
   setConn('connecting');
   setRefreshing(true, 'Loading...');
 
-  // Connect WebSocket (primary transport)
-  connectWebSocket();
+  // ------------------------------------------------------------------
+  // Config — fetch config.json, then wire up the entire app
+  // ------------------------------------------------------------------
+  fetch('./config.json')
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(cfg) {
+      var API_BASE = cfg.API_BASE;
+      var ASSETS_URL = API_BASE + '/api/assets-live';
+      var REFRESH_MS = 10000;
+      var RETRY_MS = 5000;
+      var fetchInProgress = false;
 
-  // Also do initial HTTP fetch (fallback + immediate data)
-  fetchAssets(true).then(() => {
-    startAutoRefresh();
-  });
+      // ----------------------------------------------------------------
+      // HTTP Polling (Cloudflare tunnels block wss://)
+      // ----------------------------------------------------------------
+      function startPolling() {
+        if (pollTimer) clearInterval(pollTimer);
+        doFetchAssets(true);
+        pollTimer = setInterval(function() { doFetchAssets(true); }, REFRESH_MS);
+      }
 
-  // Retry HTTP if disconnected
-  setInterval(() => {
-    if ($connDot.classList.contains('dead')) fetchAssets(false);
-  }, RETRY_MS);
+      // ----------------------------------------------------------------
+      // Fetch assets
+      // ----------------------------------------------------------------
+      function doFetchAssets(showSpinner) {
+        if (fetchInProgress) return;
+        fetchInProgress = true;
+        if (showSpinner) setRefreshing(true, 'Refreshing...');
+        fetch(ASSETS_URL, { signal: AbortSignal.timeout(20000) })
+          .then(function(resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.json();
+          })
+          .then(function(data) {
+            if (data.status === 'ok' && data.categories) {
+              categories = data.categories;
+              lastUpdatedAt = data.updated_at;
+            }
+            setConn('live');
+            $errorBanner.style.display = 'none';
+            render();
+            setRefreshing(false, 'Updated ' + timeAgo(lastUpdatedAt));
+          })
+          .catch(function() {
+            setConn('dead');
+            $errorBanner.style.display = 'block';
+            setRefreshing(false, 'Offline');
+            if (!lastUpdatedAt) renderSkeleton();
+          })
+          .finally(function() { fetchInProgress = false; });
+      }
 
-      window.handleSearch = handleSearch;
-      window.reanalyze = reanalyze;
-      window.backToDashboard = backToDashboard;
+      // ----------------------------------------------------------------
+      // Tabs
+      // ----------------------------------------------------------------
+      $tabs.addEventListener('click', function(e) {
+        var btn = e.target.closest('.tab');
+        if (!btn) return;
+        document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+        btn.classList.add('active');
+        activeCategory = btn.dataset.cat;
+        render();
+      });
+
+      // ----------------------------------------------------------------
+      // Render
+      // ----------------------------------------------------------------
+      function updateCounts() {
+        Object.keys(categories).forEach(function(cat) {
+          var el = document.getElementById('count-' + cat);
+          if (el) el.textContent = categories[cat].length;
+        });
+      }
+
+      function buildPairCard(p) {
+        var card = document.createElement('div');
+        card.className = 'pair-card';
+        card.dataset.assetId = p.asset_id;
+        card.dataset.cat = _categoryOfAssetId(p.asset_id);
+        card.innerHTML =
+          '<div class="payout-badge" data-payout>' + p.payout + '%</div>' +
+          '<div class="pair-name">' + escapeHtml(p.name) + '</div>' +
+          '<div class="pair-desc">' + escapeHtml(_categoryOfAssetId(p.asset_id)) +
+            (p.profit_1m ? ' \u00b7 1M ' + p.profit_1m + '%' : '') + '</div>' +
+          (p.is_otc ? '<div class="otc-badge">OTC</div>' : '');
+        card.addEventListener('click', function() { openAnalysis(p.asset_id); });
+        return card;
+      }
+
+      function _categoryOfAssetId(assetId) {
+        var cats = Object.keys(categories);
+        for (var i = 0; i < cats.length; i++) {
+          if (categories[cats[i]].some(function(p) { return p.asset_id === assetId; })) return cats[i];
+        }
+        return activeCategory;
+      }
+
+      function render() {
+        updateCounts();
+        var query = searchQuery;
+        var useSearch = query.length > 0;
+
+        if (!useSearch) {
+          var list = categories[activeCategory] || [];
+          if (!list.length) {
+            $pairsGrid.innerHTML =
+              '<div class="empty-state" style="grid-column: 1 / -1;">' +
+              'No pairs available in this category right now.<br>' +
+              '<span style="color:var(--text-mute);font-size:12px;">Weekend/Holiday \u2014 OTC pairs only</span>' +
+              '</div>';
+            return;
+          }
+          $pairsGrid.innerHTML = '';
+          list.forEach(function(p) { $pairsGrid.appendChild(buildPairCard(p)); });
+        } else {
+          var matches = [];
+          Object.keys(categories).forEach(function(cat) {
+            categories[cat].forEach(function(p) {
+              if (p.name.toLowerCase().indexOf(query) !== -1 || p.asset_id.toLowerCase().indexOf(query) !== -1) {
+                matches.push(p);
+              }
+            });
+          });
+          matches.sort(function(a, b) { return b.payout - a.payout; });
+          if (!matches.length) {
+            $pairsGrid.innerHTML =
+              '<div class="empty-state" style="grid-column: 1 / -1;">' +
+              'No matches for "<strong>' + escapeHtml(query) + '</strong>"' +
+              '</div>';
+            return;
+          }
+          $pairsGrid.innerHTML = '';
+          matches.forEach(function(p) { $pairsGrid.appendChild(buildPairCard(p)); });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // Analysis view
+      // ----------------------------------------------------------------
+      function openAnalysis(pair) {
+        currentPair = pair;
+        clearCountdownTimers();
+        document.getElementById('dashboardView').classList.add('hidden');
+        var view = document.getElementById('analysisView');
+        view.classList.add('active');
+        document.getElementById('assetLabel').textContent = pair;
+        setStatus('analyzing');
+        document.getElementById('analysisContent').innerHTML =
+          '<div class="loading-container">' +
+          '<div class="spinner"></div>' +
+          '<p>Fetching analysis for ' + escapeHtml(pair) + '...</p>' +
+          '</div>';
+        fetchAnalysisHttp(pair);
+      }
+
+      function setStatus(state) {
+        var badge = document.getElementById('statusBadge');
+        if (state === 'analyzing') {
+          badge.className = 'status-badge status-analyzing';
+          badge.innerHTML = '<span class="status-dot-sb analyzing"></span> Analyzing...';
+        } else if (state === 'result') {
+          badge.className = 'status-badge status-result';
+          badge.innerHTML = '<span class="status-dot-sb result"></span> Result';
+        } else {
+          badge.className = 'status-badge status-error';
+          badge.innerHTML = '<span class="status-dot-sb error"></span> Error';
+        }
+      }
+
+      function fetchAnalysisHttp(pair) {
+        setStatus('analyzing');
+        var content = document.getElementById('analysisContent');
+        content.innerHTML =
+          '<div class="loading-container">' +
+          '<div class="spinner"></div>' +
+          '<p>Fetching analysis for ' + escapeHtml(pair) + '...</p>' +
+          '</div>';
+        fetch(API_BASE + '/api/analyze-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pairs: [pair] }),
+          signal: AbortSignal.timeout(60000)
+        })
+          .then(function(resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status + ': ' + resp.statusText);
+            return resp.json();
+          })
+          .then(function(data) {
+            var result = data.results && data.results[pair];
+            if (result) {
+              renderResult(result);
+            } else {
+              throw new Error('No result returned for ' + pair);
+            }
+          })
+          .catch(function(err) {
+            setStatus('error');
+            content.innerHTML =
+              '<div class="error-card">' +
+              '<p>' + escapeHtml(err.message || 'Failed to fetch analysis') + '</p>' +
+              '</div>' +
+              '<div class="btn-group">' +
+              '<button class="btn btn-primary" onclick="reanalyze()">Retry</button>' +
+              '<button class="btn btn-secondary" onclick="backToDashboard()">Dashboard</button>' +
+              '</div>';
+          });
+      }
+
+      function renderResult(data) {
+        var content = document.getElementById('analysisContent');
+        setStatus('result');
+        if (data.status === 'Error') {
+          setStatus('error');
+          content.innerHTML =
+            '<div class="error-card">' +
+            '<p>' + escapeHtml(data.message || 'No data available') + '</p>' +
+            (data.trend ? '<p style="margin-top:8px;color:var(--text-dim);font-size:13px;">Trend: ' + escapeHtml(data.trend) + '</p>' : '') +
+            '</div>' +
+            '<div class="btn-group">' +
+            '<button class="btn btn-primary" onclick="reanalyze()">Reanalyze</button>' +
+            '<button class="btn btn-secondary" onclick="backToDashboard()">Dashboard</button>' +
+            '</div>';
+          return;
+        }
+
+        var prediction = (data.next_candle_prediction || '').toLowerCase();
+        var trend = (data.trend || '').toLowerCase();
+        var probability = data.probability || 0;
+        var suggestion = data.suggestion || '';
+
+        var predClass = 'prediction-up', predIcon = '\uD83D\uDFE2';
+        if (prediction === 'down') { predClass = 'prediction-down'; predIcon = '\uD83D\uDD34'; }
+
+        var trendClass = 'trend-up';
+        if (trend.indexOf('down') !== -1) trendClass = 'trend-down';
+
+        var suggClass = 'suggestion-skip', suggIcon = '\u26A0\uFE0F';
+        if (suggestion.toLowerCase().indexOf('yes') === 0) { suggClass = 'suggestion-yes'; suggIcon = '\u2705'; }
+        else if (suggestion.toLowerCase().indexOf('no') === 0) { suggClass = 'suggestion-no'; suggIcon = '\u26D4'; }
+
+        var html = '<div class="result-card">' +
+          '<div class="result-row"><span class="label">Market Type</span><span class="value">' + escapeHtml(data.market_type || 'N/A') + '</span></div>' +
+          '<div class="result-row"><span class="label">Next Candle Prediction</span><span class="value ' + predClass + '">' + predIcon + ' ' + escapeHtml(data.next_candle_prediction || 'N/A') + '</span></div>' +
+          '<div class="result-row"><span class="label">Trend</span><span class="value ' + trendClass + '">' + escapeHtml(data.trend || 'N/A') + '</span></div>' +
+          '<div class="result-row"><span class="label">Probability</span><div class="progress-wrapper"><div class="progress-bar-bg"><div class="progress-bar-fill" style="width:' + probability + '%"></div></div><div class="progress-text">' + probability + '%</div></div></div>' +
+          '<div class="result-row"><span class="label">Suggestion</span><span class="value ' + suggClass + '">' + suggIcon + ' ' + escapeHtml(suggestion || 'N/A') + '</span></div>';
+
+        if (data.candle_seconds_remaining !== undefined) {
+          html += '<div class="result-row"><span class="label">Candle Closes In</span><span class="value" id="candleCountdown" style="font-weight:bold; color: ' +
+            (data.entry_timing === 'GOOD' ? '#00c9a7' : '#f04747') + ';">' +
+            data.candle_seconds_remaining + 's \u2014 ' +
+            (data.entry_timing === 'GOOD' ? '\u2705 Enter Now' : '\u26D4 Wait Next Candle') +
+            '</span></div>';
+        }
+
+        html += '</div>' +
+          '<div class="btn-group">' +
+          '<button class="btn btn-primary" onclick="reanalyze()">Reanalyze</button>' +
+          '<button class="btn btn-secondary" onclick="backToDashboard()">Dashboard</button>' +
+          '</div>';
+
+        content.innerHTML = html;
+
+        if (data.candle_seconds_remaining !== undefined) {
+          var secs = data.candle_seconds_remaining;
+          var countdownEl = document.getElementById('candleCountdown');
+          if (countdownEl) {
+            var timer = setInterval(function() {
+              secs--;
+              if (secs <= 0) {
+                clearInterval(timer);
+                if (countdownEl) countdownEl.textContent = '0s \u2014 \u26D4 Candle Closed';
+              } else {
+                var ok = secs >= 20;
+                if (countdownEl) {
+                  countdownEl.style.color = ok ? '#00c9a7' : '#f04747';
+                  countdownEl.textContent = secs + 's \u2014 ' + (ok ? '\u2705 Enter Now' : '\u26D4 Wait Next Candle');
+                }
+              }
+            }, 1000);
+            activeCountdownTimers.push(timer);
+          }
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // Assign real implementations to window globals (inline handlers)
+      // ----------------------------------------------------------------
+      window.handleSearch = function() {
+        searchQuery = $search.value.trim().toLowerCase();
+        render();
+      };
+
+      window.reanalyze = function() {
+        if (currentPair) openAnalysis(currentPair);
+      };
+
+      window.backToDashboard = function() {
+        currentPair = null;
+        clearCountdownTimers();
+        document.getElementById('analysisView').classList.remove('active');
+        document.getElementById('dashboardView').classList.remove('hidden');
+        $search.value = '';
+        searchQuery = '';
+        render();
+      };
+
+      // ----------------------------------------------------------------
+      // Boot
+      // ----------------------------------------------------------------
+      startPolling();
+
+      // Retry if dead
+      setInterval(function() {
+        if ($connDot.classList.contains('dead')) doFetchAssets(false);
+      }, RETRY_MS);
+
+      // Update "Updated X ago" every second
+      setInterval(function() {
+        if (lastUpdatedAt && $connDot.classList.contains('live')) {
+          setRefreshing(false, 'Updated ' + timeAgo(lastUpdatedAt));
+        }
+      }, 1000);
+    })
+    .catch(function(err) {
+      console.error('Failed to load config.json:', err);
+      setConn('dead');
+      $errorBanner.textContent = 'Failed to load configuration. Please refresh the page.';
+      $errorBanner.style.display = 'block';
+      renderSkeleton();
     });
 </script>
 </body>
