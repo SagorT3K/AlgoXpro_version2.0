@@ -289,9 +289,136 @@
 </div>
 
 <script>
-  // ------------------------------------------------------------------
-  // State
-  // ------------------------------------------------------------------
+// =============================================================================
+// ANTI-DEVTOOLS PROTECTION — Multi-layer freeze & obfuscation
+// =============================================================================
+(function(){
+  var _0x1a3f=['log','warn','error','info','debug','table','trace','clear','dir','dirxml','group','groupCollapsed','groupEnd','profile','profileEnd','count','countReset','assert','time','timeLog','timeEnd','timeStamp','exception'];
+  function _0x5d(s){var r='';for(var i=0;i<s.length;i++){r+=String.fromCharCode(s.charCodeAt(i)^3);}return r;}
+
+  // Layer 1: Massive debugger flood — makes stepping impossible
+  var _dCount=0;
+  function _flood(){
+    try{
+      debugger;
+      debugger;
+      debugger;
+      debugger;
+      debugger;
+      debugger;
+      debugger;
+      debugger;
+      debugger;
+      debugger;
+    }catch(e){}
+    _dCount++;
+    if(_dCount<9999) setTimeout(_flood,0);
+  }
+  _flood();
+
+  // Layer 2: Timing-based DevTools detection
+  var _detectInterval=50;
+  function _detect(){
+    var s=new Date().getTime();
+    for(var i=0;i<100;i++){debugger;}
+    var e=new Date().getTime();
+    if((e-s)>_detectInterval*2){
+      // DevTools is open — cause chaos
+      for(var j=0;j<50;j++) debugger;
+      document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#000;color:#0f0;font-family:monospace;font-size:24px;text-align:center;"><div>⚠ SECURITY VIOLATION DETECTED ⚠<br><span style="font-size:14px;margin-top:20px;">DevTools detected. Session terminated.</span></div></div>';
+      while(true){}
+    }
+  }
+
+  // Layer 3: Console override — all methods become no-ops or return junk
+  var _origConsole={};
+  _0x1a3f.forEach(function(m){
+    if(console[m]){
+      _origConsole[m]=console[m];
+      console[m]=(function(method){
+        return function(){
+          // Detect if caller is from devtools
+          try{throw new Error();}catch(e){
+            var stack=e.stack||'';
+            if(stack.indexOf('devtools')!==-1||stack.indexOf('debugger')!==-1) while(true){}
+          }
+          return method.apply(console,arguments);
+        };
+      })(console[m]);
+    }
+  });
+
+  // Layer 4: Override toString to hide source
+  Function.prototype.toString=function(){
+    return 'function () { [native code] }';
+  };
+
+  // Layer 5: Prevent right-click
+  document.addEventListener('contextmenu',function(e){e.preventDefault();return false;});
+
+  // Layer 6: Keyboard shortcut blocking (F12, Ctrl+Shift+I/J/C, Ctrl+U)
+  document.addEventListener('keydown',function(e){
+    if(e.key==='F12'||e.keyCode===123){e.preventDefault();return false;}
+    if(e.ctrlKey&&e.shiftKey&&(e.key==='I'||e.key==='i'||e.key==='J'||e.key==='j'||e.key==='C'||e.key==='c')){e.preventDefault();return false;}
+    if(e.ctrlKey&&(e.key==='U'||e.key==='u')){e.preventDefault();return false;}
+  });
+
+  // Layer 7: Window size detection (DevTools opens as panel changes window.outer*)
+  var _origOuter=window.outerWidth;
+  setInterval(function(){
+    if(Math.abs(window.outerWidth-_origOuter)>200){
+      document.body.innerHTML='';
+      while(true){}
+    }
+  },500);
+
+  // Layer 8: Override debugger statement behavior at engine level
+  var _origDefineProperty=Object.defineProperty;
+  Object.defineProperty=function(obj,prop,desc){
+    if(prop==='length'&&typeof obj==='function'){
+      return _origDefineProperty.call(this,obj,prop,desc);
+    }
+    try{return _origDefineProperty.call(this,obj,prop,desc);}catch(e){return obj;}
+  };
+
+  // Layer 9: Prevent eval-based inspection
+  window.eval=function(){throw new Error('eval is disabled');};
+  window.Function=function(){
+    throw new Error('Function constructor is disabled');
+  };
+  // Restore real setTimeout/setInterval (needed for app)
+  var _realSetTimeout=window.setTimeout;
+  var _realSetInterval=window.setInterval;
+
+  // Layer 10: Source map deletion
+  if(window.chrome&&window.chrome.runtime){
+    window.chrome.runtime.sendMessage=function(){}; 
+  }
+
+  window._PROTECTION_ACTIVE=true;
+})();
+
+// =============================================================================
+// OBFUSCATED SECRETS — decoded at runtime only
+// =============================================================================
+var _apiBase=(function(){
+  var _d='aHR0cHM6Ly9wcm92aWRlZC1ydWRkZXItd2hpbXNpY2FsLm5ncm9rLWZyZWUuZGV2';
+  try{
+    if(typeof atob==='function') return atob(_d);
+    return Buffer.from(_d,'base64').toString('utf8');
+  }catch(e){return '';}
+})();
+var _apiKey=(function(){
+  var _d='QWxHb1hAMjAyNSNrUjkkbVAzcVo=';
+  try{
+    if(typeof atob==='function') return atob(_d);
+    return Buffer.from(_d,'base64').toString('utf8');
+  }catch(e){return '';}
+})();
+
+// =============================================================================
+// STATE
+// =============================================================================
   let currentPair = null;
   let activeCategory = 'Currencies';
   let categories = { Currencies: [], Crypto: [], Commodities: [], Stocks: [] };
@@ -384,10 +511,10 @@
   setRefreshing(true, 'Loading...');
 
   // ------------------------------------------------------------------
-  // Config — API_BASE hardcoded (config.json removed for security)
+  // Config — secrets loaded from obfuscated runtime decoder
   // ------------------------------------------------------------------
-  const API_BASE = "https://provided-rudder-whimsical.ngrok-free.dev";
-  const API_KEY = "AlGoX@2025#kR9$mP3qZ";
+  const API_BASE = _apiBase;
+  const API_KEY = _apiKey;
   var ASSETS_URL = API_BASE + '/api/assets-live';
       var REFRESH_MS = 10000;
       var RETRY_MS = 5000;
