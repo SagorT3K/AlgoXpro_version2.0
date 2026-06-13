@@ -387,6 +387,7 @@
   // Config — API_BASE hardcoded (config.json removed for security)
   // ------------------------------------------------------------------
   const API_BASE = "https://provided-rudder-whimsical.ngrok-free.dev";
+  const API_KEY = "algox-pro-secret-key-change-me";
   var ASSETS_URL = API_BASE + '/api/assets-live';
       var REFRESH_MS = 10000;
       var RETRY_MS = 5000;
@@ -408,7 +409,7 @@
         if (fetchInProgress) return;
         fetchInProgress = true;
         if (showSpinner) setRefreshing(true, 'Refreshing...');
-        fetch(ASSETS_URL, { headers: { 'ngrok-skip-browser-warning': 'true' }, signal: AbortSignal.timeout(20000) })
+        fetch(ASSETS_URL, { headers: { 'ngrok-skip-browser-warning': 'true', 'X-API-Key': API_KEY }, signal: AbortSignal.timeout(20000) })
           .then(function(resp) {
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             return resp.json();
@@ -559,7 +560,7 @@
           '</div>';
         fetch(API_BASE + '/api/analyze-batch', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+          headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', 'X-API-Key': API_KEY },
           body: JSON.stringify({ pairs: [pair] }),
           signal: AbortSignal.timeout(60000)
         })
