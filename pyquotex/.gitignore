@@ -1,0 +1,48 @@
+# Byte-compiled / cached
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+experimental_login/
+
+# Distribution / build
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+
+# Jekyll
+.jekyll-cache/
+
+# Credentials & sessions
+.session.pkl
+session.json
+settings/config.ini
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.*
+
+# Media / temp
+*.mp4
+.DS_Store
+
+# Package managers
+poetry.lock
+package-lock.json
+node_modules/
+
+# Generated
+.docusaurus
+.cache-loader
+
+# Gitpod
+.gitpod.yml
+
+# Browser data
+browser/

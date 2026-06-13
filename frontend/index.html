@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AlgoX Pro</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0e17;
+    --panel: #111b2e;
+    --panel-2: #0f1525;
+    --border: #1e2d4a;
+    --border-soft: #1a2540;
+    --text: #e0e6f0;
+    --text-dim: #8899bb;
+    --text-mute: #5a7a9a;
+    --accent: #00d4ff;
+    --accent-2: #00c9a7;
+    --warn: #f59e0b;
+    --down: #f04747;
+    --up: #00c9a7;
+    --otc-bg: #2a1a4a;
+    --otc-fg: #b07ae6;
+  }
+  html, body { background: var(--bg); color: var(--text); }
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; min-height: 100vh; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+  header {
+    padding: 28px 20px 18px;
+    background: linear-gradient(135deg, #0f1a2e 0%, #1a2a4a 100%);
+    border-bottom: 2px solid #2a3a5e;
+  }
+  .header-inner {
+    max-width: 1100px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+  }
+  header h1 {
+    font-size: 26px; font-weight: 700;
+    background: linear-gradient(90deg, #00c9a7, #00e5ff);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  header p { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 8px 14px; border-radius: 999px; font-size: 12px; color: var(--text-dim);
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--text-mute);
+    box-shadow: 0 0 0 0 rgba(0, 201, 167, 0.5);
+  }
+  .status-dot.live { background: var(--up); animation: pulse 1.6s infinite; }
+  .status-dot.dead { background: var(--down); }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(0, 201, 167, 0.5); }
+    50% { box-shadow: 0 0 0 8px rgba(0, 201, 167, 0); }
+  }
+
+  .tabs {
+    display: flex; gap: 4px; margin: 22px 0 12px;
+    border-bottom: 1px solid var(--border-soft); flex-wrap: wrap;
+  }
+  .tab {
+    background: transparent; border: none; color: var(--text-dim);
+    padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+    border-bottom: 2px solid transparent; transition: color 0.2s, border-color 0.2s;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab .count {
+    display: inline-block; margin-left: 6px;
+    background: var(--panel); color: var(--text-dim);
+    padding: 1px 8px; border-radius: 10px; font-size: 11px;
+  }
+  .tab.active .count { background: rgba(0, 212, 255, 0.15); color: var(--accent); }
+
+  .search-bar { margin: 4px 0 18px; max-width: 500px; display: flex; gap: 10px; }
+  .search-bar input {
+    flex: 1; padding: 11px 16px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); font-size: 14px; outline: none; transition: border 0.2s;
+  }
+  .search-bar input:focus { border-color: var(--accent); }
+  .search-bar input::placeholder { color: var(--text-mute); }
+
+  .pairs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+  .pair-card {
+    position: relative;
+    background: linear-gradient(145deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--border); border-radius: 12px; padding: 18px 14px 14px;
+    cursor: pointer; transition: all 0.25s ease; overflow: hidden;
+  }
+  .pair-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--accent-2), var(--accent));
+    opacity: 0; transition: opacity 0.25s;
+  }
+  .pair-card:hover {
+    border-color: var(--accent); transform: translateY(-3px);
+    box-shadow: 0 10px 25px rgba(0, 212, 255, 0.10);
+  }
+  .pair-card:hover::before { opacity: 1; }
+  .pair-card.hidden { display: none; }
+  .pair-name { font-size: 15px; font-weight: 700; color: var(--text); line-height: 1.2; }
+  .pair-desc { margin-top: 4px; font-size: 11px; color: var(--text-mute); text-transform: uppercase; letter-spacing: 0.5px; }
+  .payout-badge {
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(245, 158, 11, 0.12); color: var(--warn);
+    font-weight: 700; font-size: 13px; padding: 3px 8px; border-radius: 6px;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+  .otc-badge {
+    display: inline-block; background: var(--otc-bg); color: var(--otc-fg);
+    font-size: 10px; padding: 2px 8px; border-radius: 4px; margin-top: 8px;
+    font-weight: 600; letter-spacing: 0.4px;
+  }
+
+  .skeleton-card {
+    background: linear-gradient(145deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--border); border-radius: 12px; padding: 18px 14px;
+    height: 90px; position: relative; overflow: hidden;
+  }
+  .skeleton-card::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+    animation: shimmer 1.4s infinite;
+  }
+  @keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+  .empty-state, .error-banner {
+    text-align: center; padding: 40px 20px; border-radius: 12px;
+    border: 1px dashed var(--border); color: var(--text-dim); font-size: 14px;
+  }
+  .error-banner {
+    border: 1px solid #4a1a1a; background: rgba(240, 71, 71, 0.08);
+    color: #ffb3b3; margin: 0 0 18px;
+  }
+  .refresh-pill {
+    display: inline-flex; align-items: center; gap: 6px; margin-left: 10px;
+    background: var(--panel); border: 1px solid var(--border);
+    color: var(--text-mute); font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  }
+  .refresh-pill.active { color: var(--accent); border-color: var(--accent); }
+  .refresh-pill .spinner-mini {
+    width: 10px; height: 10px; border: 1.5px solid currentColor;
+    border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .analysis-view { display: none; }
+  .analysis-view.active { display: block; }
+  .dashboard-view.hidden { display: none; }
+  .analysis-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
+  }
+  .analysis-header h2 { font-size: 22px; margin: 0; }
+  .analysis-header .asset-label { color: var(--accent-2); }
+
+  .result-card {
+    background: linear-gradient(145deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--border); border-radius: 16px; padding: 28px; margin-top: 10px;
+  }
+  .result-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 0; border-bottom: 1px solid var(--border-soft); flex-wrap: wrap; gap: 8px;
+  }
+  .result-row:last-child { border-bottom: none; }
+  .result-row .label { color: var(--text-mute); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .result-row .value { font-size: 16px; font-weight: 600; }
+  .prediction-up { color: var(--up); }
+  .prediction-down { color: var(--down); }
+  .trend-up { color: var(--up); }
+  .trend-down { color: var(--down); }
+
+  .progress-wrapper { width: 160px; max-width: 100%; }
+  .progress-bar-bg { height: 10px; background: var(--border-soft); border-radius: 6px; overflow: hidden; }
+  .progress-bar-fill {
+    height: 100%; border-radius: 6px; transition: width 0.5s ease;
+    background: linear-gradient(90deg, var(--down), #ff8c42, var(--up));
+  }
+  .progress-text { text-align: right; font-size: 14px; font-weight: 700; margin-top: 4px; }
+  .suggestion-yes { color: var(--up); }
+  .suggestion-no { color: var(--down); }
+  .suggestion-skip { color: #ff8c42; }
+
+  .btn-group { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+  .btn {
+    padding: 12px 24px; border-radius: 8px; border: none; font-size: 14px;
+    font-weight: 600; cursor: pointer; transition: all 0.25s; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-primary { background: linear-gradient(135deg, var(--up), #00b894); color: #fff; }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 201, 167, 0.3); }
+  .btn-secondary { background: #1e2d4a; color: var(--text); border: 1px solid #2a3a5e; }
+  .btn-secondary:hover { background: #2a3a5e; }
+
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
+  }
+  .status-analyzing { background: #1a253a; color: var(--text-mute); }
+  .status-result { background: #0f2a1a; color: var(--up); }
+  .status-error { background: #2a0f0f; color: var(--down); }
+  .status-dot-sb { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .status-dot-sb.analyzing { background: var(--text-mute); animation: pulse 1.2s infinite; }
+  .status-dot-sb.result { background: var(--up); }
+  .status-dot-sb.error { background: var(--down); }
+
+  .error-card {
+    background: #2a0f0f; border: 1px solid #4a1a1a;
+    border-radius: 12px; padding: 20px; text-align: center; color: var(--down);
+  }
+  .loading-container { display: flex; flex-direction: column; align-items: center; padding: 40px 0; }
+  .spinner {
+    width: 44px; height: 44px; border: 4px solid var(--border-soft);
+    border-top-color: var(--up); border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  .loading-container p { margin-top: 14px; color: var(--text-mute); font-size: 14px; }
+
+  .ws-badge { display: none; }
+
+  @media (max-width: 600px) {
+    .container { padding: 12px; }
+    header h1 { font-size: 22px; }
+    .pairs-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+    .pair-card { padding: 14px 10px; }
+    .pair-name { font-size: 14px; }
+    .result-card { padding: 18px; }
+    .result-row { flex-direction: column; align-items: flex-start; }
+    .progress-wrapper { width: 100%; }
+    .btn-group { flex-direction: column; }
+    .btn { width: 100%; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <div>
+      <h1>AlgoX Pro <span style="font-size:0.45em; opacity:0.6; font-weight:400; vertical-align:middle;">Version 2.0</span></h1>
+      <p>AI-Powered Binary Signal Analysis</p>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <span class="ws-badge" id="wsBadge" style="display:none;">
+        <span id="wsIcon">⚡</span> <span id="wsText">WS</span>
+      </span>
+      <span class="status-pill" id="connPill">
+        <span class="status-dot" id="connDot"></span>
+        <span id="connText">Connecting...</span>
+      </span>
+      <span class="refresh-pill" id="refreshPill" style="display:none;">
+        <span class="spinner-mini" id="refreshSpinner" style="display:none;"></span>
+        <span id="refreshText">Idle</span>
+      </span>
+    </div>
+  </div>
+</header>
+
+<div class="container" id="app">
+  <div class="dashboard-view" id="dashboardView">
+    <div class="tabs" id="categoryTabs">
+      <button class="tab active" data-cat="Currencies">Currencies <span class="count" id="count-Currencies">0</span></button>
+      <button class="tab" data-cat="Crypto">Crypto <span class="count" id="count-Crypto">0</span></button>
+      <button class="tab" data-cat="Commodities">Commodities <span class="count" id="count-Commodities">0</span></button>
+      <button class="tab" data-cat="Stocks">Stocks <span class="count" id="count-Stocks">0</span></button>
+    </div>
+    <div class="search-bar">
+      <input type="text" id="searchInput" placeholder="Search all pairs..." oninput="handleSearch()">
+    </div>
+    <div id="errorBanner" class="error-banner" style="display:none;">
+      Cannot connect to signal server. Retrying...
+    </div>
+    <div id="pairsGrid" class="pairs-grid"></div>
+  </div>
+
+  <div class="analysis-view" id="analysisView">
+    <div class="analysis-header">
+      <h2>Analysis: <span class="asset-label" id="assetLabel"></span></h2>
+      <span class="status-badge status-analyzing" id="statusBadge">
+        <span class="status-dot-sb analyzing"></span> Analyzing...
+      </span>
+    </div>
+    <div id="analysisContent"></div>
+  </div>
+</div>
+
+<script>
+  // ------------------------------------------------------------------
+  // State
+  // ------------------------------------------------------------------
+  let currentPair = null;
+  let activeCategory = 'Currencies';
+  let categories = { Currencies: [], Crypto: [], Commodities: [], Stocks: [] };
+  let lastUpdatedAt = null;
+  let searchQuery = '';
+  let pollTimer = null;
+  let activeCountdownTimers = [];
+
+  // ------------------------------------------------------------------
+  // DOM (always available, outside .then)
+  // ------------------------------------------------------------------
+  const $pairsGrid = document.getElementById('pairsGrid');
+  const $search = document.getElementById('searchInput');
+  const $connDot = document.getElementById('connDot');
+  const $connText = document.getElementById('connText');
+  const $refreshPill = document.getElementById('refreshPill');
+  const $refreshSpinner = document.getElementById('refreshSpinner');
+  const $refreshText = document.getElementById('refreshText');
+  const $errorBanner = document.getElementById('errorBanner');
+  const $tabs = document.getElementById('categoryTabs');
+
+  // ------------------------------------------------------------------
+  // Helpers (no API dependency)
+  // ------------------------------------------------------------------
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return 'never';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return 'never';
+    const secs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+    if (secs < 5) return 'just now';
+    if (secs < 60) return secs + 's ago';
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return mins + 'm ago';
+    const hrs = Math.floor(mins / 60);
+    return hrs + 'h ago';
+  }
+
+  function setConn(state) {
+    if (state === 'live') {
+      $connDot.className = 'status-dot live';
+      $connText.textContent = 'Connected';
+    } else if (state === 'dead') {
+      $connDot.className = 'status-dot dead';
+      $connText.textContent = 'Disconnected';
+    } else {
+      $connDot.className = 'status-dot';
+      $connText.textContent = 'Connecting...';
+    }
+  }
+
+  function setRefreshing(isRefreshing, label) {
+    $refreshPill.style.display = 'inline-flex';
+    $refreshPill.classList.toggle('active', !!isRefreshing);
+    $refreshSpinner.style.display = isRefreshing ? 'inline-block' : 'none';
+    if (label) $refreshText.textContent = label;
+  }
+
+  function clearCountdownTimers() {
+    activeCountdownTimers.forEach(function(id) { clearInterval(id); });
+    activeCountdownTimers = [];
+  }
+
+  function renderSkeleton(count) {
+    count = count || 12;
+    $pairsGrid.innerHTML = '';
+    for (var i = 0; i < count; i++) {
+      var s = document.createElement('div');
+      s.className = 'skeleton-card';
+      $pairsGrid.appendChild(s);
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Inline handler stubs — safe to call before config loads (no-op)
+  // Real implementations set inside .then()
+  // ------------------------------------------------------------------
+  window.handleSearch = function() {};
+  window.reanalyze = function() {};
+  window.backToDashboard = function() {};
+
+  // Show skeleton immediately
+  renderSkeleton();
+  setConn('connecting');
+  setRefreshing(true, 'Loading...');
+
+  // ------------------------------------------------------------------
+  // Config — fetch config.json, then wire up the entire app
+  // ------------------------------------------------------------------
+  fetch('./config.json')
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(cfg) {
+      var API_BASE = cfg.API_BASE;
+      var ASSETS_URL = API_BASE + '/api/assets-live';
+      var REFRESH_MS = 10000;
+      var RETRY_MS = 5000;
+      var fetchInProgress = false;
+
+      // ----------------------------------------------------------------
+      // HTTP Polling (Cloudflare tunnels block wss://)
+      // ----------------------------------------------------------------
+      function startPolling() {
+        if (pollTimer) clearInterval(pollTimer);
+        doFetchAssets(true);
+        pollTimer = setInterval(function() { doFetchAssets(true); }, REFRESH_MS);
+      }
+
+      // ----------------------------------------------------------------
+      // Fetch assets
+      // ----------------------------------------------------------------
+      function doFetchAssets(showSpinner) {
+        if (fetchInProgress) return;
+        fetchInProgress = true;
+        if (showSpinner) setRefreshing(true, 'Refreshing...');
+        fetch(ASSETS_URL, { headers: { 'ngrok-skip-browser-warning': 'true' }, signal: AbortSignal.timeout(20000) })
+          .then(function(resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.json();
+          })
+          .then(function(data) {
+            if (data.status === 'ok' && data.categories) {
+              categories = data.categories;
+              lastUpdatedAt = data.updated_at;
+            }
+            setConn('live');
+            $errorBanner.style.display = 'none';
+            render();
+            setRefreshing(false, 'Updated ' + timeAgo(lastUpdatedAt));
+          })
+          .catch(function() {
+            setConn('dead');
+            $errorBanner.style.display = 'block';
+            setRefreshing(false, 'Offline');
+            if (!lastUpdatedAt) renderSkeleton();
+          })
+          .finally(function() { fetchInProgress = false; });
+      }
+
+      // ----------------------------------------------------------------
+      // Tabs
+      // ----------------------------------------------------------------
+      $tabs.addEventListener('click', function(e) {
+        var btn = e.target.closest('.tab');
+        if (!btn) return;
+        document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+        btn.classList.add('active');
+        activeCategory = btn.dataset.cat;
+        render();
+      });
+
+      // ----------------------------------------------------------------
+      // Render
+      // ----------------------------------------------------------------
+      function updateCounts() {
+        Object.keys(categories).forEach(function(cat) {
+          var el = document.getElementById('count-' + cat);
+          if (el) el.textContent = categories[cat].length;
+        });
+      }
+
+      function buildPairCard(p) {
+        var card = document.createElement('div');
+        card.className = 'pair-card';
+        card.dataset.assetId = p.asset_id;
+        card.dataset.cat = _categoryOfAssetId(p.asset_id);
+        card.innerHTML =
+          '<div class="payout-badge" data-payout>' + p.payout + '%</div>' +
+          '<div class="pair-name">' + escapeHtml(p.name) + '</div>' +
+          '<div class="pair-desc">' + escapeHtml(_categoryOfAssetId(p.asset_id)) +
+            (p.profit_1m ? ' \u00b7 1M ' + p.profit_1m + '%' : '') + '</div>' +
+          (p.is_otc ? '<div class="otc-badge">OTC</div>' : '');
+        card.addEventListener('click', function() { openAnalysis(p.asset_id); });
+        return card;
+      }
+
+      function _categoryOfAssetId(assetId) {
+        var cats = Object.keys(categories);
+        for (var i = 0; i < cats.length; i++) {
+          if (categories[cats[i]].some(function(p) { return p.asset_id === assetId; })) return cats[i];
+        }
+        return activeCategory;
+      }
+
+      function render() {
+        updateCounts();
+        var query = searchQuery;
+        var useSearch = query.length > 0;
+
+        if (!useSearch) {
+          var list = categories[activeCategory] || [];
+          if (!list.length) {
+            $pairsGrid.innerHTML =
+              '<div class="empty-state" style="grid-column: 1 / -1;">' +
+              'No pairs available in this category right now.<br>' +
+              '<span style="color:var(--text-mute);font-size:12px;">Weekend/Holiday \u2014 OTC pairs only</span>' +
+              '</div>';
+            return;
+          }
+          $pairsGrid.innerHTML = '';
+          list.forEach(function(p) { $pairsGrid.appendChild(buildPairCard(p)); });
+        } else {
+          var matches = [];
+          Object.keys(categories).forEach(function(cat) {
+            categories[cat].forEach(function(p) {
+              if (p.name.toLowerCase().indexOf(query) !== -1 || p.asset_id.toLowerCase().indexOf(query) !== -1) {
+                matches.push(p);
+              }
+            });
+          });
+          matches.sort(function(a, b) { return b.payout - a.payout; });
+          if (!matches.length) {
+            $pairsGrid.innerHTML =
+              '<div class="empty-state" style="grid-column: 1 / -1;">' +
+              'No matches for "<strong>' + escapeHtml(query) + '</strong>"' +
+              '</div>';
+            return;
+          }
+          $pairsGrid.innerHTML = '';
+          matches.forEach(function(p) { $pairsGrid.appendChild(buildPairCard(p)); });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // Analysis view
+      // ----------------------------------------------------------------
+      function openAnalysis(pair) {
+        currentPair = pair;
+        clearCountdownTimers();
+        document.getElementById('dashboardView').classList.add('hidden');
+        var view = document.getElementById('analysisView');
+        view.classList.add('active');
+        document.getElementById('assetLabel').textContent = pair;
+        setStatus('analyzing');
+        document.getElementById('analysisContent').innerHTML =
+          '<div class="loading-container">' +
+          '<div class="spinner"></div>' +
+          '<p>Fetching analysis for ' + escapeHtml(pair) + '...</p>' +
+          '</div>';
+        fetchAnalysisHttp(pair);
+      }
+
+      function setStatus(state) {
+        var badge = document.getElementById('statusBadge');
+        if (state === 'analyzing') {
+          badge.className = 'status-badge status-analyzing';
+          badge.innerHTML = '<span class="status-dot-sb analyzing"></span> Analyzing...';
+        } else if (state === 'result') {
+          badge.className = 'status-badge status-result';
+          badge.innerHTML = '<span class="status-dot-sb result"></span> Result';
+        } else {
+          badge.className = 'status-badge status-error';
+          badge.innerHTML = '<span class="status-dot-sb error"></span> Error';
+        }
+      }
+
+      function fetchAnalysisHttp(pair) {
+        setStatus('analyzing');
+        var content = document.getElementById('analysisContent');
+        content.innerHTML =
+          '<div class="loading-container">' +
+          '<div class="spinner"></div>' +
+          '<p>Fetching analysis for ' + escapeHtml(pair) + '...</p>' +
+          '</div>';
+        fetch(API_BASE + '/api/analyze-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+          body: JSON.stringify({ pairs: [pair] }),
+          signal: AbortSignal.timeout(60000)
+        })
+          .then(function(resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status + ': ' + resp.statusText);
+            return resp.json();
+          })
+          .then(function(data) {
+            var result = data.results && data.results[pair];
+            if (result) {
+              renderResult(result);
+            } else {
+              throw new Error('No result returned for ' + pair);
+            }
+          })
+          .catch(function(err) {
+            setStatus('error');
+            content.innerHTML =
+              '<div class="error-card">' +
+              '<p>' + escapeHtml(err.message || 'Failed to fetch analysis') + '</p>' +
+              '</div>' +
+              '<div class="btn-group">' +
+              '<button class="btn btn-primary" onclick="reanalyze()">Retry</button>' +
+              '<button class="btn btn-secondary" onclick="backToDashboard()">Dashboard</button>' +
+              '</div>';
+          });
+      }
+
+      function renderResult(data) {
+        var content = document.getElementById('analysisContent');
+        setStatus('result');
+        if (data.status === 'Error') {
+          setStatus('error');
+          content.innerHTML =
+            '<div class="error-card">' +
+            '<p>' + escapeHtml(data.message || 'No data available') + '</p>' +
+            (data.trend ? '<p style="margin-top:8px;color:var(--text-dim);font-size:13px;">Trend: ' + escapeHtml(data.trend) + '</p>' : '') +
+            '</div>' +
+            '<div class="btn-group">' +
+            '<button class="btn btn-primary" onclick="reanalyze()">Reanalyze</button>' +
+            '<button class="btn btn-secondary" onclick="backToDashboard()">Dashboard</button>' +
+            '</div>';
+          return;
+        }
+
+        var prediction = (data.next_candle_prediction || '').toLowerCase();
+        var trend = (data.trend || '').toLowerCase();
+        var probability = data.probability || 0;
+        var suggestion = data.suggestion || '';
+
+        var predClass = 'prediction-up', predIcon = '\uD83D\uDFE2';
+        if (prediction === 'down') { predClass = 'prediction-down'; predIcon = '\uD83D\uDD34'; }
+
+        var trendClass = 'trend-up';
+        if (trend.indexOf('down') !== -1) trendClass = 'trend-down';
+
+        var suggClass = 'suggestion-skip', suggIcon = '\u26A0\uFE0F';
+        if (suggestion.toLowerCase().indexOf('yes') === 0) { suggClass = 'suggestion-yes'; suggIcon = '\u2705'; }
+        else if (suggestion.toLowerCase().indexOf('no') === 0) { suggClass = 'suggestion-no'; suggIcon = '\u26D4'; }
+
+        var html = '<div class="result-card">' +
+          '<div class="result-row"><span class="label">Market Type</span><span class="value">' + escapeHtml(data.market_type || 'N/A') + '</span></div>' +
+          '<div class="result-row"><span class="label">Next Candle Prediction</span><span class="value ' + predClass + '">' + predIcon + ' ' + escapeHtml(data.next_candle_prediction || 'N/A') + '</span></div>' +
+          '<div class="result-row"><span class="label">Trend</span><span class="value ' + trendClass + '">' + escapeHtml(data.trend || 'N/A') + '</span></div>' +
+          '<div class="result-row"><span class="label">Probability</span><div class="progress-wrapper"><div class="progress-bar-bg"><div class="progress-bar-fill" style="width:' + probability + '%"></div></div><div class="progress-text">' + probability + '%</div></div></div>' +
+          '<div class="result-row"><span class="label">Suggestion</span><span class="value ' + suggClass + '">' + suggIcon + ' ' + escapeHtml(suggestion || 'N/A') + '</span></div>';
+
+        if (data.candle_seconds_remaining !== undefined) {
+          html += '<div class="result-row"><span class="label">Candle Closes In</span><span class="value" id="candleCountdown" style="font-weight:bold; color: ' +
+            (data.entry_timing === 'GOOD' ? '#00c9a7' : '#f04747') + ';">' +
+            data.candle_seconds_remaining + 's \u2014 ' +
+            (data.entry_timing === 'GOOD' ? '\u2705 Enter Now' : '\u26D4 Wait Next Candle') +
+            '</span></div>';
+        }
+
+        html += '</div>' +
+          '<div class="btn-group">' +
+          '<button class="btn btn-primary" onclick="reanalyze()">Reanalyze</button>' +
+          '<button class="btn btn-secondary" onclick="backToDashboard()">Dashboard</button>' +
+          '</div>';
+
+        content.innerHTML = html;
+
+        if (data.candle_seconds_remaining !== undefined) {
+          var secs = data.candle_seconds_remaining;
+          var countdownEl = document.getElementById('candleCountdown');
+          if (countdownEl) {
+            var timer = setInterval(function() {
+              secs--;
+              if (secs <= 0) {
+                clearInterval(timer);
+                if (countdownEl) countdownEl.textContent = '0s \u2014 \u26D4 Candle Closed';
+              } else {
+                var ok = secs >= 20;
+                if (countdownEl) {
+                  countdownEl.style.color = ok ? '#00c9a7' : '#f04747';
+                  countdownEl.textContent = secs + 's \u2014 ' + (ok ? '\u2705 Enter Now' : '\u26D4 Wait Next Candle');
+                }
+              }
+            }, 1000);
+            activeCountdownTimers.push(timer);
+          }
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // Assign real implementations to window globals (inline handlers)
+      // ----------------------------------------------------------------
+      window.handleSearch = function() {
+        searchQuery = $search.value.trim().toLowerCase();
+        render();
+      };
+
+      window.reanalyze = function() {
+        if (currentPair) openAnalysis(currentPair);
+      };
+
+      window.backToDashboard = function() {
+        currentPair = null;
+        clearCountdownTimers();
+        document.getElementById('analysisView').classList.remove('active');
+        document.getElementById('dashboardView').classList.remove('hidden');
+        $search.value = '';
+        searchQuery = '';
+        render();
+      };
+
+      // ----------------------------------------------------------------
+      // Boot
+      // ----------------------------------------------------------------
+      startPolling();
+
+      // Retry if dead
+      setInterval(function() {
+        if ($connDot.classList.contains('dead')) doFetchAssets(false);
+      }, RETRY_MS);
+
+      // Update "Updated X ago" every second
+      setInterval(function() {
+        if (lastUpdatedAt && $connDot.classList.contains('live')) {
+          setRefreshing(false, 'Updated ' + timeAgo(lastUpdatedAt));
+        }
+      }, 1000);
+    })
+    .catch(function(err) {
+      console.error('Failed to load config.json:', err);
+      setConn('dead');
+      $errorBanner.textContent = 'Failed to load configuration. Please refresh the page.';
+      $errorBanner.style.display = 'block';
+      renderSkeleton();
+    });
+</script>
+</body>
+</html>
