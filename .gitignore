@@ -2,3 +2,16 @@
 __pycache__/
 .venv/
 session.json
+backend/
+pyquotex/
+.vscode/
+*.log
+*.pyc
+Dockerfile
+docker-compose.yml
+ngrok.exe
+cloudflared.exe
+projetfile.zip
+trade_page.html
+deploy.sh
+nginx.conf

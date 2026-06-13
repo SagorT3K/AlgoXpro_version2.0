@@ -1,7 +1,0 @@
-Access page with SSL RESOLVER
-[WS DEBUG] Received while not authenticated: 0{"sid":"Wc-csbKAoZstTkDwDEB2","upgrades":[],"pingInterval":25000,"pingTimeout":5000}
-[WS DEBUG] Received while not authenticated: 40
-[WS DEBUG] Received while not authenticated: 451-["instruments/list",{"_placeholder":true,"num":0}]
-[WS DEBUG] Received while not authenticated: [[368,"ATOUSD_otc","Cosmos (OTC)","cryptocurrency",4,82,60,30,3,1,0,0,[[300,"put"],[600,"call"],[900,"call"],[1800,"put"],[2700,"put"],[3600,"put"],[7200,"call"],[10800,"call"],[14400,"call"]],178130
-[WS DEBUG] Received while not authenticated: 42["s_authorization"]
-[DEBUG] Websocket authorization SUCCESS!
