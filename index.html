@@ -384,16 +384,10 @@
   setRefreshing(true, 'Loading...');
 
   // ------------------------------------------------------------------
-  // Config — fetch config.json, then wire up the entire app
+  // Config — API_BASE hardcoded (config.json removed for security)
   // ------------------------------------------------------------------
-  fetch('./config.json')
-    .then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
-    .then(function(cfg) {
-      var API_BASE = cfg.API_BASE;
-      var ASSETS_URL = API_BASE + '/api/assets-live';
+  const API_BASE = "https://provided-rudder-whimsical.ngrok-free.dev";
+  var ASSETS_URL = API_BASE + '/api/assets-live';
       var REFRESH_MS = 10000;
       var RETRY_MS = 5000;
       var fetchInProgress = false;
@@ -709,14 +703,6 @@
           setRefreshing(false, 'Updated ' + timeAgo(lastUpdatedAt));
         }
       }, 1000);
-    })
-    .catch(function(err) {
-      console.error('Failed to load config.json:', err);
-      setConn('dead');
-      $errorBanner.textContent = 'Failed to load configuration. Please refresh the page.';
-      $errorBanner.style.display = 'block';
-      renderSkeleton();
-    });
 </script>
 </body>
 </html>
