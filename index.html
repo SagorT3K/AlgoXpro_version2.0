@@ -426,6 +426,9 @@ var _apiKey=(function(){
   let searchQuery = '';
   let pollTimer = null;
   let activeCountdownTimers = [];
+  let retryCount = 0;
+  let pendingRetry = null;
+  const MAX_RETRIES = 5;
 
   // ------------------------------------------------------------------
   // DOM (always available, outside .then)
@@ -649,6 +652,8 @@ var _apiKey=(function(){
       // ----------------------------------------------------------------
       function openAnalysis(pair) {
         currentPair = pair;
+        retryCount = 0;
+        if (pendingRetry) { clearTimeout(pendingRetry); pendingRetry = null; }
         clearCountdownTimers();
         document.getElementById('dashboardView').classList.add('hidden');
         var view = document.getElementById('analysisView');
@@ -719,6 +724,35 @@ var _apiKey=(function(){
       function renderResult(data) {
         var content = document.getElementById('analysisContent');
         setStatus('result');
+        if (data.status === 'warming_up') {
+          retryCount++;
+          if (retryCount > MAX_RETRIES) {
+            setStatus('error');
+            content.innerHTML =
+              '<div class="error-card">' +
+              '<p>Cache still warming up after ' + MAX_RETRIES + ' attempts.</p>' +
+              '<p style="color:var(--text-mute);font-size:12px;margin-top:6px;">' + escapeHtml(data.message || '') + '</p>' +
+              '</div>' +
+              '<div class="btn-group">' +
+              '<button class="btn btn-primary" onclick="reanalyze()">Retry</button>' +
+              '<button class="btn btn-secondary" onclick="backToDashboard()">Dashboard</button>' +
+              '</div>';
+            return;
+          }
+          setStatus('analyzing');
+          var retryMs = (data.retry_after || 3) * 1000;
+          content.innerHTML =
+            '<div class="loading-container">' +
+            '<div class="spinner"></div>' +
+            '<p>' + escapeHtml(data.message || 'Warming up candle cache...') + '</p>' +
+            '<p style="color:var(--text-mute);font-size:12px;margin-top:8px;">Attempt ' + retryCount + '/' + MAX_RETRIES + ' — retrying in ' + data.retry_after + 's...</p>' +
+            '</div>' +
+            '<div class="btn-group">' +
+            '<button class="btn btn-secondary" onclick="backToDashboard()">Dashboard</button>' +
+            '</div>';
+          pendingRetry = setTimeout(function() { pendingRetry = null; if (currentPair === pair) fetchAnalysisHttp(pair); }, retryMs);
+          return;
+        }
         if (data.status === 'Error') {
           setStatus('error');
           content.innerHTML =
@@ -807,6 +841,8 @@ var _apiKey=(function(){
 
       window.backToDashboard = function() {
         currentPair = null;
+        retryCount = 0;
+        if (pendingRetry) { clearTimeout(pendingRetry); pendingRetry = null; }
         clearCountdownTimers();
         document.getElementById('analysisView').classList.remove('active');
         document.getElementById('dashboardView').classList.remove('hidden');
